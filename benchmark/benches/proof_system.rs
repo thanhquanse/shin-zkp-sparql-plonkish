@@ -4,6 +4,7 @@ use benchmark::{
 };
 use espresso_hyperplonk::{prelude::MockCircuit, HyperPlonkSNARK};
 use espresso_subroutines::{MultilinearKzgPCS, PolyIOP, PolynomialCommitmentScheme};
+use halo2_gadgets::sinsemilla::primitives::C;
 use halo2_proofs::{
     plonk::{create_proof, keygen_pk, keygen_vk, verify_proof},
     poly::kzg::{
@@ -44,7 +45,7 @@ fn main() {
     k_range.for_each(|k| systems.iter().for_each(|system| system.bench(k, circuit)));
 }
 
-fn bench_plonkish_backend<B, C>(system: System, k: usize)
+pub fn bench_plonkish_backend<B, C>(system: System, k: usize, circuit: &PlonkishCircuit<F>)
 where
     B: PlonkishBackend<Fr> + WitnessEncoding,
     C: CircuitExt<Fr>,
@@ -52,8 +53,8 @@ where
         + TranscriptWrite<CommitmentChunk<Fr, B::Pcs>, Fr>
         + InMemoryTranscript,
 {
-    let circuit = C::rand(k, std_rng());
-    let circuit = Halo2Circuit::new::<B>(k, circuit);
+    // let circuit = C::rand(k, std_rng());
+    // let circuit = Halo2Circuit::new::<B>(k, circuit);
     let circuit_info = circuit.circuit_info().unwrap();
     let instances = circuit.instances();
 
@@ -80,16 +81,16 @@ where
     assert!(accept);
 }
 
-fn bench_hyperplonk<C: CircuitExt<Fr>>(k: usize) {
+fn bench_hyperplonk<C: CircuitExt<Fr>>(k: usize, c: &impl PlonkishCircuit<F>) {
     type GeminiKzg = multilinear::Gemini<univariate::UnivariateKzg<Bn256>>;
     type HyperPlonk = backend::hyperplonk::HyperPlonk<GeminiKzg>;
-    bench_plonkish_backend::<HyperPlonk, C>(System::HyperPlonk, k)
+    bench_plonkish_backend::<HyperPlonk, C>(System::HyperPlonk, k, c)
 }
 
-fn bench_unihyperplonk<C: CircuitExt<Fr>>(k: usize) {
+fn bench_unihyperplonk<C: CircuitExt<Fr>>(k: usize, c: &impl PlonkishCircuit<F>) {
     type UnivariateKzg = univariate::UnivariateKzg<Bn256>;
     type UniHyperPlonk = backend::unihyperplonk::UniHyperPlonk<UnivariateKzg, true>;
-    bench_plonkish_backend::<UniHyperPlonk, C>(System::UniHyperPlonk, k)
+    bench_plonkish_backend::<UniHyperPlonk, C>(System::UniHyperPlonk, k, c)
 }
 
 fn bench_halo2<C: CircuitExt<Fr>>(k: usize) {
@@ -209,7 +210,7 @@ impl System {
         }
     }
 
-    fn bench(&self, k: usize, circuit: Circuit) {
+    pub fn bench(&self, k: usize, circuit: &PlonkishCircuit<F>) {
         if !self.support(circuit) {
             println!("skip benchmark on {circuit} with {self} because it's not compatible");
             return;
@@ -219,16 +220,16 @@ impl System {
 
         match self {
             System::HyperPlonk => match circuit {
-                Circuit::VanillaPlonk => bench_hyperplonk::<VanillaPlonk<Fr>>(k),
-                Circuit::Aggregation => bench_hyperplonk::<AggregationCircuit<Bn256>>(k),
-                Circuit::Sha256 => bench_hyperplonk::<Sha256Circuit>(k),
-                Circuit::Keccak256 => bench_hyperplonk::<Keccak256Circuit>(k),
+                Circuit::VanillaPlonk => bench_hyperplonk::<VanillaPlonk<Fr>>(k, c),
+                Circuit::Aggregation => bench_hyperplonk::<AggregationCircuit<Bn256>>(k, c),
+                Circuit::Sha256 => bench_hyperplonk::<Sha256Circuit>(k, c),
+                Circuit::Keccak256 => bench_hyperplonk::<Keccak256Circuit>(k, c),
             },
             System::UniHyperPlonk => match circuit {
-                Circuit::VanillaPlonk => bench_unihyperplonk::<VanillaPlonk<Fr>>(k),
-                Circuit::Aggregation => bench_unihyperplonk::<AggregationCircuit<Bn256>>(k),
-                Circuit::Sha256 => bench_unihyperplonk::<Sha256Circuit>(k),
-                Circuit::Keccak256 => bench_unihyperplonk::<Keccak256Circuit>(k),
+                Circuit::VanillaPlonk => bench_unihyperplonk::<VanillaPlonk<Fr>>(k, c),
+                Circuit::Aggregation => bench_unihyperplonk::<AggregationCircuit<Bn256>>(k, c),
+                Circuit::Sha256 => bench_unihyperplonk::<Sha256Circuit>(k, c),
+                Circuit::Keccak256 => bench_unihyperplonk::<Keccak256Circuit>(k, c),
             },
             System::Halo2 => match circuit {
                 Circuit::VanillaPlonk => bench_halo2::<VanillaPlonk<Fr>>(k),
